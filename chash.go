@@ -50,6 +50,10 @@ type CHash interface {
 	GetPartition(key string) int
 	// GetPartitionMembers return members by partition number
 	GetPartitionMembers(partId int) ([]Member, error)
+	// GetNext returns next member on members ring
+	GetNext(memberId string) (Member, error)
+	// GetPrev returns previous member on members ring
+	GetPrev(memberId string) (Member, error)
 	// Distribute members by partitions
 	// Must be called if you changed members' capacity
 	Distribute()
@@ -170,6 +174,43 @@ func (c *cHash) GetPartition(key string) int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.getPartition(key)
+}
+
+func (c *cHash) GetNext(memberId string) (Member, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if _, ok := c.members[memberId]; !ok {
+		if !ok {
+			return nil, ErrMemberNotExists
+		}
+	}
+	h := c.config.Hasher.Sum64([]byte(memberId))
+	idx := sort.Search(len(c.membersSet), func(i int) bool {
+		return c.membersSet[i].hash > h
+	})
+	if idx == len(c.membersSet) {
+		idx = 0
+	}
+	return c.membersSet[idx].Member, nil
+}
+
+func (c *cHash) GetPrev(memberId string) (Member, error) {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if _, ok := c.members[memberId]; !ok {
+		if !ok {
+			return nil, ErrMemberNotExists
+		}
+	}
+	h := c.config.Hasher.Sum64([]byte(memberId))
+	idx := sort.Search(len(c.membersSet), func(i int) bool {
+		return c.membersSet[i].hash >= h
+	})
+	idx--
+	if idx < 0 {
+		idx = len(c.membersSet) - 1
+	}
+	return c.membersSet[idx].Member, nil
 }
 
 func (c *cHash) getPartition(key string) int {
