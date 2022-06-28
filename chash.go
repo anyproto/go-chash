@@ -248,22 +248,11 @@ func (c *cHash) distribute() {
 	if len(c.membersSet) < rf {
 		rf = len(c.membersSet)
 	}
-	var totalPieces int
 	for i, m := range c.membersSet {
-		p := int((float64(c.config.PartitionCount) * float64(rf)) / (totalCapacity / m.Capacity()))
+		p := int((float64(c.config.PartitionCount)*float64(rf))/(totalCapacity/m.Capacity())) + 1
 		c.membersSet[i].pieces = p
-		totalPieces += p
 	}
-	if dif := int(c.config.PartitionCount)*c.config.ReplicationFactor - totalPieces; dif > 0 {
-		n := 0
-		for i := 0; i < dif; i++ {
-			if n == len(c.membersSet) {
-				n = 0
-			}
-			c.membersSet[n].pieces++
-			n++
-		}
-	}
+
 	var buf = make([]int, rf)
 	for i, h := range c.partitionHashes {
 		if len(c.partitions[i]) != rf {
