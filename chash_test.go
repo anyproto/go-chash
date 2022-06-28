@@ -22,6 +22,10 @@ func (t testMember) Capacity() float64 {
 	return t.cap
 }
 
+func (t testMember) String() string {
+	return t.id
+}
+
 func TestNew(t *testing.T) {
 	t.Run("invalid part count", func(t *testing.T) {
 		_, err := New(Config{PartitionCount: 0})
@@ -267,6 +271,40 @@ func TestCHash_GetPrev(t *testing.T) {
 	m, err = h.GetPrev("c")
 	require.NoError(t, err)
 	assert.Equal(t, m.Id(), "b")
+}
+
+func TestCHash_Distribute(t *testing.T) {
+	t.Run("uniq nodes for partition", func(t *testing.T) {
+		pc := 10
+		rf := 3
+		h, err := New(Config{
+			PartitionCount:    uint64(pc),
+			ReplicationFactor: rf,
+		})
+		require.NoError(t, err)
+		require.NoError(t, h.AddMembers(
+			&testMember{
+				id:  "1",
+				cap: 1,
+			},
+			&testMember{
+				id:  "3",
+				cap: 0.5,
+			},
+			&testMember{
+				id:  "4",
+				cap: 1,
+			}))
+		for i := 0; i < pc; i++ {
+			ms, e := h.GetPartitionMembers(i)
+			require.NoError(t, e)
+			var ids = map[string]bool{}
+			for _, m := range ms {
+				ids[m.Id()] = true
+			}
+			assert.Len(t, ids, rf, ms)
+		}
+	})
 }
 
 func BenchmarkCHash_GetMembers(b *testing.B) {

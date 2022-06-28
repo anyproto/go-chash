@@ -264,11 +264,12 @@ func (c *cHash) distribute() {
 			n++
 		}
 	}
+	var buf = make([]int, rf)
 	for i, h := range c.partitionHashes {
 		if len(c.partitions[i]) != rf {
 			c.partitions[i] = make([]Member, rf)
 		}
-		c.membersSet.fillClosest(h, c.partitions[i])
+		c.membersSet.fillClosest(h, c.partitions[i], buf)
 	}
 }
 
@@ -292,18 +293,34 @@ func (m members) Swap(i, j int) {
 	m[i], m[j] = m[j], m[i]
 }
 
-func (m members) fillClosest(h uint64, ms []Member) {
+func (m members) fillClosest(h uint64, ms []Member, buf []int) {
 	idx := sort.Search(len(m), func(i int) bool {
 		return m[i].hash >= h
 	})
 	var found int
+	var maxOverflow int
+	var foundIdx = buf[:0]
+	var isAlreadyFound = func(idx int) bool {
+		for _, fidx := range foundIdx {
+			if idx == fidx {
+				return true
+			}
+		}
+		return false
+	}
 	for found < len(ms) {
 		if idx == m.Len() {
 			idx = 0
 		}
-		if m[idx].pieces != 0 {
+		if isAlreadyFound(idx) {
+			maxOverflow++
+			idx++
+			continue
+		}
+		if m[idx].pieces > -maxOverflow {
 			m[idx].pieces--
 			ms[found] = m[idx].Member
+			foundIdx = append(foundIdx, idx)
 			found++
 		}
 		idx++
