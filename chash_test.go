@@ -66,6 +66,42 @@ func TestCHash_AddMembers(t *testing.T) {
 	})
 }
 
+func TestCHash_Reconfigure(t *testing.T) {
+	t.Run("capacity error", func(t *testing.T) {
+		h, err := New(Config{
+			PartitionCount:    10,
+			ReplicationFactor: 1,
+		})
+		require.NoError(t, err)
+		assert.Equal(t, ErrInvalidCapacity, h.Reconfigure([]Member{&testMember{id: "1"}}))
+	})
+	t.Run("reconfigure", func(t *testing.T) {
+		c := Config{ReplicationFactor: 3, PartitionCount: 100}
+		members := []Member{
+			&testMember{id: "1", cap: 1},
+			&testMember{id: "2", cap: 1},
+		}
+		newMemb := &testMember{id: "3", cap: 1}
+		h1, err := New(c)
+		require.NoError(t, err)
+		require.NoError(t, h1.AddMembers(members...))
+		require.NoError(t, h1.AddMembers(newMemb))
+		nodesByPartitions1 := make([][]Member, c.PartitionCount)
+		for i := range nodesByPartitions1 {
+			nodesByPartitions1[i], _ = h1.GetPartitionMembers(i)
+		}
+		h2, err := New(c)
+		require.NoError(t, err)
+		require.NoError(t, h2.AddMembers(members...))
+		require.NoError(t, h2.Reconfigure(append(members, newMemb)))
+		nodesByPartitions2 := make([][]Member, c.PartitionCount)
+		for i := range nodesByPartitions2 {
+			nodesByPartitions2[i], _ = h2.GetPartitionMembers(i)
+		}
+		assert.Equal(t, nodesByPartitions1, nodesByPartitions2)
+	})
+}
+
 func TestCHash_RemoveMembers(t *testing.T) {
 	t.Run("remove", func(t *testing.T) {
 		pc := 10

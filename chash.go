@@ -43,6 +43,8 @@ type CHash interface {
 	AddMembers(members ...Member) error
 	// RemoveMembers removes members with given ids
 	RemoveMembers(memberIds ...string) error
+	// Reconfigure replaces all members list
+	Reconfigure(members []Member) error
 	// GetMembers returns list of members for given key
 	// Members count will be equal replication factor or total members count (if it is less than the replication factor)
 	GetMembers(key string) []Member
@@ -112,7 +114,6 @@ func (c *cHash) init() (err error) {
 func (c *cHash) AddMembers(members ...Member) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-
 	for _, m := range members {
 		if m.Capacity() <= 0 {
 			return ErrInvalidCapacity
@@ -121,6 +122,10 @@ func (c *cHash) AddMembers(members ...Member) error {
 			return ErrMemberExists
 		}
 	}
+	return c.addMembers(members...)
+}
+
+func (c *cHash) addMembers(members ...Member) error {
 	for _, m := range members {
 		c.membersSet = append(c.membersSet, member{
 			hash:   c.config.Hasher.Sum64([]byte(m.Id())),
@@ -162,6 +167,19 @@ func (c *cHash) RemoveMembers(memberIds ...string) error {
 	}
 	c.distribute()
 	return nil
+}
+
+func (c *cHash) Reconfigure(members []Member) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, m := range members {
+		if m.Capacity() <= 0 {
+			return ErrInvalidCapacity
+		}
+	}
+	c.members = make(map[string]Member)
+	c.membersSet = c.membersSet[:0]
+	return c.addMembers(members...)
 }
 
 func (c *cHash) GetMembers(key string) []Member {
