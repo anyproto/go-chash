@@ -352,6 +352,16 @@ func TestCHash_Distribute(t *testing.T) {
 			assert.Len(t, ids, rf, ms)
 		}
 	})
+	t.Run("members > partitions", func(t *testing.T) {
+		h, err := New(Config{
+			PartitionCount:    10,
+			ReplicationFactor: 3,
+		})
+		require.NoError(t, err)
+		for i := 0; i < 35; i++ {
+			assert.NoError(t, h.AddMembers(&testMember{id: fmt.Sprint(i), cap: 1}))
+		}
+	})
 }
 
 func BenchmarkCHash_GetMembers(b *testing.B) {
