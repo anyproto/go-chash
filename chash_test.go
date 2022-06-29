@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"math/rand"
 	"strconv"
 	"testing"
 )
@@ -94,48 +95,58 @@ func TestCHash_RemoveMembers(t *testing.T) {
 
 func TestCapacity(t *testing.T) {
 	h, err := New(Config{
-		PartitionCount:    1000,
+		PartitionCount:    3000,
 		ReplicationFactor: 3,
 	})
 	require.NoError(t, err)
 	h.AddMembers(
 		&testMember{
-			id:  "cap1",
+			id:  "n1",
 			cap: 1,
 		},
 		&testMember{
-			id:  "cap2",
+			id:  "n2",
 			cap: 2,
 		},
 		&testMember{
-			id:  "cap3",
+			id:  "n3",
 			cap: 3,
 		},
 		&testMember{
-			id:  "cap4",
+			id:  "n4",
 			cap: 4,
 		},
 		&testMember{
-			id:  "cap5",
-			cap: 5,
+			id:  "n5",
+			cap: 6,
 		},
 	)
 
-	var ditribStat = make(map[int]int)
+	var ditribStatObj = make(map[int]int)
+	var ditribStatPart = make(map[int]int)
 	var total int
 
 	for i := 0; i < 100000; i++ {
-		memb := h.GetMembers(strconv.Itoa(i))
+		memb := h.GetMembers("o" + strconv.Itoa(int(rand.Int63())))
 		for _, m := range memb {
-			ditribStat[int(m.Capacity())]++
+			ditribStatObj[int(m.Capacity())]++
 			total++
 		}
 	}
+	for i := 0; i < 3000; i++ {
+		memb, _ := h.GetPartitionMembers(i)
+		for _, m := range memb {
+			ditribStatPart[int(m.Capacity())]++
+			total++
+		}
+	}
+
 	var prevCount int
-	for i := 1; i <= 5; i++ {
-		count := ditribStat[i]
+	for _, i := range []int{1, 2, 3, 4, 6} {
+		count := ditribStatObj[i]
 		assert.Greater(t, count, prevCount)
-		t.Logf("capacity: %d; objects: %d (%.2f%%)", i, count, (100/float64(total))*float64(count))
+		t.Logf("capacity: %d; objects: %d (%.2f%%); part: %d", i, count, (100/float64(total))*float64(count), ditribStatPart[i])
+		prevCount = count
 	}
 }
 
