@@ -59,6 +59,8 @@ type CHash interface {
 	// Distribute members by partitions
 	// Must be called if you changed members' capacity
 	Distribute()
+	// PartitionCount returns configured partitions count
+	PartitionCount() int
 }
 
 type Member interface {
@@ -229,6 +231,10 @@ func (c *cHash) GetPrev(memberId string) (Member, error) {
 		idx = len(c.membersSet) - 1
 	}
 	return c.membersSet[idx].Member, nil
+}
+
+func (c *cHash) PartitionCount() int {
+	return int(c.config.PartitionCount)
 }
 
 func (c *cHash) getPartition(key string) int {

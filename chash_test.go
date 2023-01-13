@@ -364,6 +364,15 @@ func TestCHash_Distribute(t *testing.T) {
 	})
 }
 
+func TestCHash_PartitionCount(t *testing.T) {
+	h, err := New(Config{
+		PartitionCount:    10,
+		ReplicationFactor: 3,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 10, h.PartitionCount())
+}
+
 func BenchmarkCHash_GetMembers(b *testing.B) {
 	h, err := New(Config{
 		PartitionCount:    3000,
