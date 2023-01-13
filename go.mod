@@ -4,7 +4,7 @@ go 1.18
 
 require (
 	github.com/cespare/xxhash v1.1.0
-	github.com/stretchr/testify v1.7.3
+	github.com/stretchr/testify v1.8.1
 )
 
 require (
