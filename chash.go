@@ -30,6 +30,9 @@ func New(c Config) (CHash, error) {
 	if c.ReplicationFactor == 0 {
 		c.ReplicationFactor = 1
 	}
+	if c.MultiplyFactor <= 0 {
+		c.MultiplyFactor = defaultMultiplyFactor
+	}
 	h := &cHash{config: c}
 	if err := h.init(); err != nil {
 		return nil, err
@@ -76,6 +79,8 @@ type Config struct {
 	PartitionCount uint64
 	// ReplicationFactor - how many nodes expected for GetMembers
 	ReplicationFactor int
+	// Multiply Factor (optional) - this value multiplied for member capacity means how many times a member will be added to the hash ring. The default value is 2000.
+	MultiplyFactor int
 }
 
 func (c Config) Validate() (err error) {
@@ -88,7 +93,7 @@ func (c Config) Validate() (err error) {
 	return
 }
 
-const virtualMembers = 2000
+const defaultMultiplyFactor = 2000
 
 type cHash struct {
 	config          Config
@@ -130,7 +135,7 @@ func (c *cHash) AddMembers(members ...Member) error {
 func (c *cHash) addMembers(members ...Member) error {
 	for _, m := range members {
 		// generating enough virtual members for better hash distribution
-		for i := 0; i < int(virtualMembers*m.Capacity()); i++ {
+		for i := 0; i < int(float64(c.config.MultiplyFactor)*m.Capacity()); i++ {
 			c.membersSet = append(c.membersSet, member{
 				hash:   c.config.Hasher.Sum64([]byte(fmt.Sprint(m.Id(), i))),
 				Member: m,
