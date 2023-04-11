@@ -1,10 +1,11 @@
 module github.com/anytypeio/go-chash
 
-go 1.18
+go 1.19
 
 require (
 	github.com/cespare/xxhash v1.1.0
 	github.com/stretchr/testify v1.8.1
+	golang.org/x/exp v0.0.0-20230321023759-10a507213a29
 )
 
 require (

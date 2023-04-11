@@ -3,6 +3,7 @@ package chash
 import (
 	"errors"
 	"fmt"
+	"golang.org/x/exp/slices"
 	"sort"
 	"sync"
 
@@ -52,10 +53,6 @@ type CHash interface {
 	GetPartition(key string) int
 	// GetPartitionMembers return members by partition number
 	GetPartitionMembers(partId int) ([]Member, error)
-	// GetNext returns next member on members ring
-	GetNext(memberId string) (Member, error)
-	// GetPrev returns previous member on members ring
-	GetPrev(memberId string) (Member, error)
 	// Distribute members by partitions
 	// Must be called if you changed members' capacity
 	Distribute()
@@ -91,10 +88,13 @@ func (c Config) Validate() (err error) {
 	return
 }
 
+const virtualPerNode = 2000
+
 type cHash struct {
 	config          Config
 	members         map[string]Member
 	membersSet      members
+	piecesPerMember map[string]int
 	partitions      [][]Member
 	partitionHashes []uint64
 	mu              sync.RWMutex
@@ -129,10 +129,12 @@ func (c *cHash) AddMembers(members ...Member) error {
 
 func (c *cHash) addMembers(members ...Member) error {
 	for _, m := range members {
-		c.membersSet = append(c.membersSet, member{
-			hash:   c.config.Hasher.Sum64([]byte(m.Id())),
-			Member: m,
-		})
+		for i := 0; i < int(virtualPerNode*m.Capacity()); i++ {
+			c.membersSet = append(c.membersSet, member{
+				hash:   c.config.Hasher.Sum64([]byte(fmt.Sprint(m.Id(), i))),
+				Member: m,
+			})
+		}
 		c.members[m.Id()] = m
 	}
 	sort.Sort(c.membersSet)
@@ -149,21 +151,17 @@ func (c *cHash) RemoveMembers(memberIds ...string) error {
 			return ErrMemberNotExists
 		}
 	}
-	in := func(id string) bool {
-		for _, mId := range memberIds {
-			if id == mId {
-				return true
+	discard := func(ids ...string) members {
+		idx := 0
+		for _, el := range c.membersSet {
+			if !slices.Contains(ids, el.Id()) {
+				c.membersSet[idx] = el
+				idx++
 			}
 		}
-		return false
+		return c.membersSet[:idx]
 	}
-	filteredSet := c.membersSet[:0]
-	for _, m := range c.membersSet {
-		if !in(m.Id()) {
-			filteredSet = append(filteredSet, m)
-		}
-	}
-	c.membersSet = filteredSet
+	c.membersSet = discard(memberIds...)
 	for _, mId := range memberIds {
 		delete(c.members, mId)
 	}
@@ -194,43 +192,6 @@ func (c *cHash) GetPartition(key string) int {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.getPartition(key)
-}
-
-func (c *cHash) GetNext(memberId string) (Member, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if _, ok := c.members[memberId]; !ok {
-		if !ok {
-			return nil, ErrMemberNotExists
-		}
-	}
-	h := c.config.Hasher.Sum64([]byte(memberId))
-	idx := sort.Search(len(c.membersSet), func(i int) bool {
-		return c.membersSet[i].hash > h
-	})
-	if idx == len(c.membersSet) {
-		idx = 0
-	}
-	return c.membersSet[idx].Member, nil
-}
-
-func (c *cHash) GetPrev(memberId string) (Member, error) {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
-	if _, ok := c.members[memberId]; !ok {
-		if !ok {
-			return nil, ErrMemberNotExists
-		}
-	}
-	h := c.config.Hasher.Sum64([]byte(memberId))
-	idx := sort.Search(len(c.membersSet), func(i int) bool {
-		return c.membersSet[i].hash >= h
-	})
-	idx--
-	if idx < 0 {
-		idx = len(c.membersSet) - 1
-	}
-	return c.membersSet[idx].Member, nil
 }
 
 func (c *cHash) PartitionCount() int {
@@ -265,30 +226,60 @@ func (c *cHash) distribute() {
 		return
 	}
 	var totalCapacity float64
-	for _, m := range c.membersSet {
+	rf := c.config.ReplicationFactor
+	if len(c.members) < rf {
+		rf = len(c.members)
+	}
+	for _, m := range c.members {
 		totalCapacity += m.Capacity()
 	}
-	rf := c.config.ReplicationFactor
-	if len(c.membersSet) < rf {
-		rf = len(c.membersSet)
-	}
-	for i, m := range c.membersSet {
+	c.piecesPerMember = map[string]int{}
+	for _, m := range c.members {
 		p := int((float64(c.config.PartitionCount)*float64(rf))/(totalCapacity/m.Capacity())) + 1
-		c.membersSet[i].pieces = p
+		c.piecesPerMember[m.Id()] = p
 	}
 
-	var buf = make([]int, rf)
+	var buf = make([]string, rf)
 	for i, h := range c.partitionHashes {
 		if len(c.partitions[i]) != rf {
 			c.partitions[i] = make([]Member, rf)
 		}
-		c.membersSet.fillClosest(h, c.partitions[i], buf)
+		c.fillClosest(c.membersSet, h, c.partitions[i], buf)
+	}
+}
+
+func (c *cHash) fillClosest(m members, h uint64, ms []Member, buf []string) {
+	idx := sort.Search(len(m), func(i int) bool {
+		return m[i].hash >= h
+	})
+	var found int
+	var maxOverflow int
+	var foundId = buf[:0]
+
+	var isAlreadyFound = func(id string) bool {
+		return slices.Contains(foundId, id)
+	}
+	for found < len(ms) {
+		if idx == m.Len() {
+			idx = 0
+		}
+		if isAlreadyFound(m[idx].Id()) {
+			maxOverflow++
+			idx++
+			continue
+		}
+		if c.piecesPerMember[m[idx].Id()] > -maxOverflow {
+			c.piecesPerMember[m[idx].Id()]--
+			ms[found] = m[idx].Member
+			foundId = append(foundId, m[idx].Id())
+			found++
+		}
+		idx++
 	}
 }
 
 type member struct {
-	hash   uint64
-	pieces int
+	hash uint64
 	Member
 }
 
@@ -299,43 +290,13 @@ func (m members) Len() int {
 }
 
 func (m members) Less(i, j int) bool {
-	return m[i].hash < m[j].hash
+	if m[i].hash == m[j].hash {
+		return m[i].Id() < m[j].Id()
+	} else {
+		return m[i].hash < m[j].hash
+	}
 }
 
 func (m members) Swap(i, j int) {
 	m[i], m[j] = m[j], m[i]
-}
-
-func (m members) fillClosest(h uint64, ms []Member, buf []int) {
-	idx := sort.Search(len(m), func(i int) bool {
-		return m[i].hash >= h
-	})
-	var found int
-	var maxOverflow int
-	var foundIdx = buf[:0]
-	var isAlreadyFound = func(idx int) bool {
-		for _, fidx := range foundIdx {
-			if idx == fidx {
-				return true
-			}
-		}
-		return false
-	}
-	for found < len(ms) {
-		if idx == m.Len() {
-			idx = 0
-		}
-		if isAlreadyFound(idx) {
-			maxOverflow++
-			idx++
-			continue
-		}
-		if m[idx].pieces > -maxOverflow {
-			m[idx].pieces--
-			ms[found] = m[idx].Member
-			foundIdx = append(foundIdx, idx)
-			found++
-		}
-		idx++
-	}
 }
