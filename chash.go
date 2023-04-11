@@ -88,7 +88,7 @@ func (c Config) Validate() (err error) {
 	return
 }
 
-const virtualPerNode = 2000
+const virtualMembers = 2000
 
 type cHash struct {
 	config          Config
@@ -129,7 +129,8 @@ func (c *cHash) AddMembers(members ...Member) error {
 
 func (c *cHash) addMembers(members ...Member) error {
 	for _, m := range members {
-		for i := 0; i < int(virtualPerNode*m.Capacity()); i++ {
+		// generating enough virtual members for better hash distribution
+		for i := 0; i < int(virtualMembers*m.Capacity()); i++ {
 			c.membersSet = append(c.membersSet, member{
 				hash:   c.config.Hasher.Sum64([]byte(fmt.Sprint(m.Id(), i))),
 				Member: m,
