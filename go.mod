@@ -1,4 +1,4 @@
-module github.com/anytypeio/go-chash
+module github.com/anyproto/go-chash
 
 go 1.19
 
