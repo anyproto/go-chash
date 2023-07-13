@@ -23,3 +23,15 @@ The algorithm limits the load on a node, which makes distribution more or less e
 | 68    | 69   | 177               | 159            | 178            | 2.38%            |
 | 69    | 70   | 174               | 161            | 175            | 2.37%            |
 | 70    | 71   | 172               | 154            | 173            | 2.05%            |
+
+## Contribution
+Thank you for your desire to develop Anytype together. 
+
+Currently, we're not ready to accept PRs, but we will in the nearest future.
+
+Follow us on [Github](https://github.com/anyproto) and join the [Contributors Community](https://github.com/orgs/anyproto/discussions).
+
+---
+Made by Any — a Swiss association 🇨🇭
+
+Licensed under [MIT License](./LICENSE).
